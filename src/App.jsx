@@ -828,6 +828,7 @@ export default function WardList() {
   const [scanMsg, setScanMsg] = useState("");
   const [dictatingIdx, setDictatingIdx] = useState(null);
   const [ordersScanIdx, setOrdersScanIdx] = useState(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
 
   useEffect(() => { loadSaved(); }, []);
 
@@ -874,9 +875,8 @@ export default function WardList() {
   }
 
   async function deleteRecord(id) {
-    if (!confirm("Delete this patient record?")) return;
-    try { await supabase.delete("rounds_patients", id); await loadSaved(); }
-    catch (e) { alert("Delete failed: " + e.message); }
+    try { await supabase.delete("rounds_patients", id); setConfirmDeleteId(null); await loadSaved(); }
+    catch (e) { setConfirmDeleteId(null); setLoadError("Delete failed — " + e.message); }
   }
 
   function loadIntoForm(row) { setPatients([row]); setTab("rounds"); }
@@ -976,9 +976,16 @@ export default function WardList() {
                   <p className="text-xs text-slate-400">MRN {row.mrn || "—"} · Room {row.room || "—"} · {row.dx || "—"}</p>
                   <p className="text-[10px] text-slate-300 mt-0.5">Saved {new Date(row.updated_at).toLocaleString()}</p>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex gap-2 items-center">
                   <button onClick={() => loadIntoForm(row)} className="text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg font-semibold hover:bg-blue-700">Load</button>
-                  <button onClick={() => deleteRecord(row.id)} className="text-xs bg-red-50 text-red-500 px-3 py-1.5 rounded-lg font-semibold hover:bg-red-100">Delete</button>
+                  {confirmDeleteId === row.id ? (
+                    <>
+                      <button data-testid="confirm-delete" onClick={() => deleteRecord(row.id)} className="text-xs bg-red-600 text-white px-3 py-1.5 rounded-lg font-semibold hover:bg-red-700">Confirm</button>
+                      <button data-testid="cancel-delete" onClick={() => setConfirmDeleteId(null)} className="text-xs bg-slate-100 text-slate-600 px-3 py-1.5 rounded-lg font-semibold hover:bg-slate-200">Cancel</button>
+                    </>
+                  ) : (
+                    <button data-testid="delete-record" onClick={() => setConfirmDeleteId(row.id)} className="text-xs bg-red-50 text-red-500 px-3 py-1.5 rounded-lg font-semibold hover:bg-red-100">Delete</button>
+                  )}
                 </div>
               </div>
             ))}
