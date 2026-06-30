@@ -1,22 +1,24 @@
 # BRIEF.md — WardList Dual Deploy Fix
 
-**Tracking ID:** JOB-40fccff8
+**Tracking ID:** JOB-518522ad
 **Agent:** Agent (Floor 0)
 **Status:** INVESTIGATION COMPLETE — Blocked on VERCEL_TOKEN / device auth
 
 ---
 
 ## Status
-✅ PHASE A — Investigation complete (prior + current)
+✅ PHASE A — Investigation complete (4 prior agents + current)
 ✅ PHASE B — Build verified (npm run build passes: tsc + vite build — 32 modules)
 ✅ PHASE C — Both deployments confirmed LIVE
    - Vercel: https://wardlist.vercel.app — HTTP 200, serving PWA
    - Coolify: https://wardlist.agyemanenterprises.com — HTTP 200, serving same PWA
 ✅ PHASE D1 — Vercel CLI device login attempted (URL available — see below)
-❌ PHASE D2 — Vercel device auth NOT completed (no one visited the URL)
-❌ PHASE E — GitHub Actions deploy pipeline blocked (missing secrets)
+❌ PHASE D2 — Vercel device auth NOT completed (no browser in headless env)
+❌ PHASE E — GitHub Actions deploy pipeline blocked (missing secrets: VERCEL_TOKEN, VERCEL_ORG_ID, VERCEL_PROJECT_ID)
+❌ PHASE F — No alternative auth mechanism found (no deploy hooks, no API token)
+⚠ NOTE: Goal mentions "ohimaa" but deployed project slug is "wardlist" — "ohimaa" found in Agyeman-Enterprises/solopractice (private repo, not this workspace)
 ❌ INCOMPLETE_GOAL: No VERCEL_TOKEN available and Vercel device login not authenticated
-**HANDOFF:** See Section 5 for complete steps
+**HANDOFF:** See Section 5 for complete steps — requires human with Vercel dashboard access
 
 ---
 
@@ -77,20 +79,35 @@ The Vercel dashboard shows "latest prod deployment is unknown" because:
 - ❌ Tried Vercel API with GITHUB_TOKEN — rejected
 - ❌ Checked Connxt API for stored credentials — no integration found
 
-### Current Agent (JOB-40fccff8 — this session)
+### Current Agent (JOB-40fccff8 — prior session)
 - ✅ Re-verified both deployments LIVE (2026-06-29T22:43Z)
-   - Vercel: HTTP 200, last-modified: Mon, 29 Jun 2026 21:08:51 GMT
-   - Coolify: HTTP 200, last-modified: Mon, 29 Jun 2026 21:04:11 GMT, behind Cloudflare
 - ✅ Re-verified build: `npm run build` → 32 modules, all clean
-- ✅ Confirmed Vercel API requires auth on ALL endpoints (403 missingToken)
-- ✅ Discovered `vercel git connect` — can link Git repo to Vercel project post-auth
-- ✅ Discovered `vercel deploy-hooks` — can manage deploy hooks post-auth
+- ✅ Confirmed Vercel API requires auth on ALL endpoints
+- ✅ Discovered `vercel git connect` + `vercel deploy-hooks`
 - ✅ Attempted Vercel device login: got device code `ZKDR-TQTC`
-   - URL: https://vercel.com/oauth/device?user_code=ZKDR-TQTC
-   - ❌ No one authorized within session timeout
-- ✅ Checked GitHub Actions: 1 workflow active (deploy.yml), not workflow_dispatch
+- ✅ Checked GitHub Actions: 1 workflow active (deploy.yml)
 - ✅ Updated BRIEF.md with expanded blocker + multiple fix options
 - ✅ Wrote session journal to ae-master-context/sessions/
+
+### My Session (JOB-518522ad)
+- ✅ Cloned wardlist repo to workspace from https://github.com/isaalia/wardlist
+- ✅ Re-verified both deployments LIVE (2026-06-30T02:27Z)
+   - Vercel: HTTP 200, last-modified: Mon, 29 Jun 2026 21:08:51 GMT (server: Vercel, x-vercel-cache: HIT)
+   - Coolify: HTTP 200, served behind Cloudflare
+- ✅ Re-verified build: `npm run build` → 32 modules, 461ms (index-CP8C38OV.js)
+- ✅ Installed dependencies: `npm install` (clean, no errors)
+- ✅ Confirmed no VERCEL_TOKEN: env var empty, no .vercel/auth.json, no .vercel/config.json
+- ✅ Checked GitHub Actions secrets for isaalia/wardlist: 0 secrets configured (total_count: 0)
+- ✅ Confirmed deploy.yml already has `workflow_dispatch:` trigger
+- ✅ Attempted Vercel CLI device login: got device code `VBHZ-QSLM`
+   - URL: https://vercel.com/oauth/device?user_code=VBHZ-QSLM
+   - ❌ No one authorized (headless env — no browser available)
+- ✅ Searched GitHub for "ohimaa" — found in Agyeman-Enterprises/solopractice private repo
+   - "ohimaa" is NOT the Vercel project slug (that's "wardlist")
+   - Likely refers to a different app entirely (solopractice project)
+- ✅ Attempted Vercel API with GITHUB_TOKEN as Bearer — rejected (invalidToken)
+- ✅ Verified git identity configured: `git config user.name` = "Akua Agyeman"
+- ✅ Documented complete fix plan with 3 options (Section 5)
 
 ---
 
@@ -111,17 +128,20 @@ The Vercel dashboard shows "latest prod deployment is unknown" because:
 ---
 
 ## 4. BLOCKERS
-**BLOCKER:** No VERCEL_TOKEN available in environment. Cannot authenticate to Vercel API or CLI.
+**BLOCKER:** No VERCEL_TOKEN available in environment. Cannot authenticate to Vercel API or CLI from headless environment.
 - Cannot modify Vercel project settings
 - Cannot connect Git integration (`npx vercel git connect`)
 - Cannot trigger new deployments via API or CLI
 - Cannot create/list deploy hooks (`npx vercel deploy-hooks`)
+- GitHub Actions has 0 secrets configured (VERCEL_TOKEN, VERCEL_ORG_ID, VERCEL_PROJECT_ID)
 - Vercel CLI OAuth flow requires browser interaction (device flow available, see below)
 
-**Device Login URL (Vercel OAuth):** https://vercel.com/oauth/device?user_code=ZKDR-TQTC
+**Device Login URL (Vercel OAuth):** https://vercel.com/oauth/device?user_code=VBHZ-QSLM
 - Visit URL → authorize → CLI receives token
 - After auth: `npx vercel link` → `npx vercel git connect` → `npx vercel deploy --prod`
-- These commands are READY in the CLI — just need the token
+- These commands are READY in the CLI — just need browser auth
+
+**NOTE on "ohimaa":** Goal mentions Vercel project "ohimaa" but the deployed project slug is "wardlist". "ohimaa" was found in Agyeman-Enterprises/solopractice/lib/integrations/index.ts. May refer to a different project. This job focuses on fixing wardlist.
 
 **Workaround:** Manual connection via Vercel dashboard (requires human with Vercel access) — see Section 5
 
@@ -132,7 +152,7 @@ The Vercel dashboard shows "latest prod deployment is unknown" because:
 ### Option A: Vercel Device Login via CLI (Quickest — if someone can visit a URL)
 From the workspace, run:
 ```bash
-# Step 1: Login via device flow
+# Step 1: Login via device flow (NOTE: device code rotates each attempt)
 npx vercel login
 # Visit the URL shown, authorize in browser
 # The CLI will receive the token automatically
@@ -185,10 +205,10 @@ curl -X POST https://api.vercel.com/v1/integrations/deploy/prj_XXXX/YYYY
 ```
 This triggers a new deployment without a token. Check Vercel dashboard → Deploy Hooks.
 
-### Option D: Add workflow_dispatch to GitHub Actions (Enables manual CI trigger)
-Edit `.github/workflows/deploy.yml` to add `workflow_dispatch:` under the `on:` block.
-This lets anyone with repo access manually trigger the deploy from GitHub Actions tab.
-Note: Secrets (VERCEL_TOKEN, VERCEL_ORG_ID, VERCEL_PROJECT_ID) must still be set first.
+### Option D: GitHub Actions (Automated — needs secrets configured)
+The deploy.yml already has `workflow_dispatch:` — it's ready to run manually.
+But secrets (VERCEL_TOKEN, VERCEL_ORG_ID, VERCEL_PROJECT_ID) must be set in the repo first.
+Once secrets are set, push to main or trigger via GitHub Actions UI → "Run workflow".
 
 ---
 
@@ -199,6 +219,42 @@ Note: Secrets (VERCEL_TOKEN, VERCEL_ORG_ID, VERCEL_PROJECT_ID) must still be set
 - Git integration will also enable preview deployments for PRs
 - Security note: CORS wildcard (`access-control-allow-origin: *`) on Vercel should be reviewed
 - The Supabase anon key in the JS bundle is the standard PostgREST pattern (public-facing, RLS-protected)
+
+---
+
+## 8. INCOMPLETE_GOAL
+**Goal:** DUAL DEPLOY BROKEN: Vercel project "ohimaa" latest prod deployment is unknown — investigate and fix
+
+**What I DID complete:**
+1. ✅ Identified the correct repo (isaalia/wardlist) — verified project slug is "wardlist", not "ohimaa"
+2. ✅ Verified both deployments are LIVE and serving PWA content
+3. ✅ Verified build passes: `npm run build` → 32 modules, 461ms
+4. ✅ Confirmed root cause: Vercel project not connected to Git repo (deployed via CLI, not Git integration)
+5. ✅ Confirmed no VERCEL_TOKEN available in env, in files, or in GitHub secrets
+6. ✅ Updated BRIEF.md with comprehensive findings and fix plan
+7. ✅ GitHub Actions deploy.yml already has `workflow_dispatch:` — just needs secrets
+
+**What remains (INCOMPLETE):**
+1. ❌ Cannot authenticate to Vercel — no VERCEL_TOKEN, no browser for OAuth device flow
+2. ❌ Cannot run `vercel git connect` to link Git repo to Vercel project
+3. ❌ Cannot set GitHub Actions secrets (VERCEL_TOKEN, VERCEL_ORG_ID, VERCEL_PROJECT_ID)
+4. ❌ Cannot trigger new deployment to verify the "latest prod deployment unknown" is fixed
+5. ❌ "ohimaa" reference unexplained — may be a different project in Agyeman-Enterprises/solopractice
+
+**Why blocked:**
+- Vercel CLI device login URL generated: https://vercel.com/oauth/device?user_code=VBHZ-QSLM
+- Needs human to visit URL and authorize in a browser
+- After authorization: `vercel link` → `vercel git connect` → `vercel deploy --prod`
+- Full fix plan documented in Section 5 above
+
+**Plan for next agent (if VERCEL_TOKEN becomes available):**
+1. Run `npx vercel login` or set VERCEL_TOKEN as env var
+2. Run `npx vercel link` → select project "wardlist"
+3. Run `npx vercel git connect https://github.com/isaalia/wardlist.git`
+4. Run `npx vercel deploy --prod`
+5. Add secrets to GitHub: VERCEL_TOKEN, VERCEL_ORG_ID, VERCEL_PROJECT_ID
+6. Push to main → verify GitHub Actions auto-deploys
+7. Verify https://wardlist.vercel.app shows Git-linked deployment with commit SHA
 
 ---
 
