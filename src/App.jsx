@@ -1750,29 +1750,190 @@ function CallbackHandler({ onUser }) {
   return <div className="min-h-screen bg-[#F5F3EF] flex items-center justify-center"><p className="text-stone-500 text-sm animate-pulse">Signing in…</p></div>;
 }
 
-// ─── PASSWORD FALLBACK ────────────────────────────────────────────────────────
-function PasswordFallback({ onLogin }) {
-  const [pwd, setPwd] = useState(""); const [err, setErr] = useState(""); const [busy, setBusy] = useState(false);
-  async function submit(e) {
-    e.preventDefault(); setBusy(true); setErr("");
+// ─── TOTP (RFC 6238) CLIENT-SIDE MFA VERIFICATION ───────────────────────────
+function base32Decode(str) {
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+  const clean = str.replace(/=+$/, "").toUpperCase();
+  let bits = "";
+  for (let i = 0; i < clean.length; i++) {
+    const val = alphabet.indexOf(clean[i]);
+    if (val === -1) throw new Error("Invalid base32 character");
+    bits += val.toString(2).padStart(5, "0");
+  }
+  const bytes = [];
+  for (let i = 0; i + 8 <= bits.length; i += 8) {
+    bytes.push(parseInt(bits.slice(i, i + 8), 2));
+  }
+  return new Uint8Array(bytes);
+}
+
+async function verifyTOTP(secret, code, windowSize = 2) {
+  try {
+    const keyBytes = base32Decode(secret);
+    const codeInt = parseInt(code.trim(), 10);
+    if (isNaN(codeInt)) return false;
+
+    const cryptoKey = await window.crypto.subtle.importKey(
+      "raw",
+      keyBytes,
+      { name: "HMAC", hash: { name: "SHA-1" } },
+      false,
+      ["sign"]
+    );
+
+    const timeStep = 30;
+    const nowEpoch = Math.floor(Date.now() / 1000);
+    const currentCounter = Math.floor(nowEpoch / timeStep);
+
+    for (let i = -windowSize; i <= windowSize; i++) {
+      const counter = currentCounter + i;
+      const buffer = new ArrayBuffer(8);
+      const view = new DataView(buffer);
+      view.setUint32(0, 0);
+      view.setUint32(4, counter);
+
+      const signature = await window.crypto.subtle.sign("HMAC", cryptoKey, buffer);
+      const hmac = new Uint8Array(signature);
+
+      const offset = hmac[hmac.length - 1] & 0x0f;
+      const binary =
+        ((hmac[offset] & 0x7f) << 24) |
+        ((hmac[offset + 1] & 0xff) << 16) |
+        ((hmac[offset + 2] & 0xff) << 8) |
+        (hmac[offset + 3] & 0xff);
+
+      const otp = binary % 1000000;
+      if (otp === codeInt) {
+        return true;
+      }
+    }
+    return false;
+  } catch (err) {
+    console.error("TOTP verification error:", err);
+    return false;
+  }
+}
+
+// ─── STANDALONE LOGIN WITH OTP ──────────────────────────────────────────────
+function StandaloneLogin({ onLogin }) {
+  const [email, setEmail] = useState("");
+  const [pwd, setPwd] = useState("");
+  const [otp, setOtp] = useState("");
+  const [step, setStep] = useState(1); // 1 = credentials, 2 = 2FA OTP
+  const [err, setErr] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const OTP_SECRET = import.meta.env.VITE_APP_OTP_SECRET || "OW4GNH2FZ26236N7";
+
+  async function handleCredentialsSubmit(e) {
+    e.preventDefault();
+    if (!email || !pwd) return;
+    setBusy(true);
+    setErr("");
     try {
       const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(pwd));
       const hash = Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, "0")).join("");
-      if (hash === import.meta.env.VITE_APP_PASSWORD_HASH) { onLogin({ profile: { preferred_username: "admin" } }); return; }
-      setErr("Incorrect password.");
-    } catch { setErr("Auth error."); } finally { setBusy(false); }
+      if (hash === import.meta.env.VITE_APP_PASSWORD_HASH) {
+        setStep(2);
+      } else {
+        setErr("Incorrect password.");
+      }
+    } catch (err) {
+      setErr("Authentication failed.");
+    } finally {
+      setBusy(false);
+    }
   }
+
+  async function handleOtpSubmit(e) {
+    e.preventDefault();
+    if (!otp) return;
+    setBusy(true);
+    setErr("");
+    try {
+      const isOtpValid = await verifyTOTP(OTP_SECRET, otp);
+      if (isOtpValid) {
+        onLogin({ profile: { preferred_username: email.split("@")[0] || "admin" } });
+      } else {
+        setErr("Invalid dynamic verification code.");
+      }
+    } catch (err) {
+      setErr("Verification failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (step === 1) {
+    return (
+      <div className="min-h-screen bg-[#F5F3EF] flex items-center justify-center p-4">
+        <form onSubmit={handleCredentialsSubmit} className="bg-white rounded-2xl shadow-lg p-8 w-full max-w-sm">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-[#0D554A] mb-1">Patient Rounds</p>
+          <h1 className="text-2xl font-bold text-stone-900 mb-6">WardList</h1>
+          <div className="space-y-4 mb-6">
+            <div>
+              <label className="block text-[10px] font-semibold text-stone-500 uppercase tracking-wider mb-1">Email Address</label>
+              <input
+                type="email"
+                required
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+                placeholder="doctor@hospital.org"
+                autoFocus
+                className="w-full border border-stone-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0D554A] focus:border-transparent"
+              />
+            </div>
+            <div>
+              <label className="block text-[10px] font-semibold text-stone-500 uppercase tracking-wider mb-1">Password</label>
+              <input
+                type="password"
+                required
+                value={pwd}
+                onChange={e => setPwd(e.target.value)}
+                placeholder="••••••••"
+                className="w-full border border-stone-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0D554A] focus:border-transparent"
+              />
+            </div>
+          </div>
+          {err && <p className="text-xs text-red-600 mb-4 bg-red-50 border border-red-100 rounded-lg px-3 py-1.5 font-medium">{err}</p>}
+          <button type="submit" disabled={busy || !email || !pwd} className="w-full bg-[#0D554A] text-white py-2.5 rounded-lg font-semibold text-sm hover:bg-[#0A3F37] disabled:opacity-50 transition-colors">
+            Next
+          </button>
+        </form>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-[#F5F3EF] flex items-center justify-center p-4">
-      <form onSubmit={submit} className="bg-white rounded-2xl shadow-lg p-8 w-full max-w-sm">
+      <form onSubmit={handleOtpSubmit} className="bg-white rounded-2xl shadow-lg p-8 w-full max-w-sm">
         <p className="text-[10px] font-bold uppercase tracking-widest text-[#0D554A] mb-1">Patient Rounds</p>
-        <h1 className="text-2xl font-bold text-stone-900 mb-6">WardList</h1>
-        <input type="password" value={pwd} onChange={e => setPwd(e.target.value)} placeholder="Password" autoFocus
-          className="w-full border border-stone-300 rounded-lg px-3 py-2.5 text-sm mb-4 focus:outline-none focus:ring-2 focus:ring-[#0D554A] focus:border-transparent" />
-        {err && <p className="text-xs text-red-600 mb-4">{err}</p>}
-        <button type="submit" disabled={busy || !pwd} className="w-full bg-[#0D554A] text-white py-2.5 rounded-lg font-semibold text-sm hover:bg-[#0A3F37]">
-          Sign In
-        </button>
+        <h1 className="text-2xl font-bold text-stone-900 mb-2">Two-Factor OTP</h1>
+        <p className="text-xs text-stone-500 mb-6 font-medium">Enter the 6-digit dynamic code from your authenticator app.</p>
+        <div className="mb-6">
+          <label className="block text-[10px] font-semibold text-stone-500 uppercase tracking-wider mb-1">MFA Verification Code</label>
+          <input
+            type="text"
+            required
+            pattern="[0-9]{6}"
+            inputMode="numeric"
+            maxLength={6}
+            value={otp}
+            onChange={e => setOtp(e.target.value.replace(/\D/g, ""))}
+            placeholder="000000"
+            autoFocus
+            className="w-full text-center tracking-widest text-lg font-bold border border-stone-300 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#0D554A] focus:border-transparent"
+          />
+        </div>
+        {err && <p className="text-xs text-red-600 mb-4 bg-red-50 border border-red-100 rounded-lg px-3 py-1.5 font-medium">{err}</p>}
+        <div className="flex gap-3">
+          <button type="button" onClick={() => { setStep(1); setErr(""); setOtp(""); }} className="flex-1 border border-stone-300 text-stone-600 py-2.5 rounded-lg font-semibold text-sm hover:bg-stone-50 transition-colors">
+            Back
+          </button>
+          <button type="submit" disabled={busy || otp.length !== 6} className="flex-1 bg-[#0D554A] text-white py-2.5 rounded-lg font-semibold text-sm hover:bg-[#0A3F37] disabled:opacity-50 transition-colors">
+            Verify & Sign In
+          </button>
+        </div>
       </form>
     </div>
   );
@@ -1791,7 +1952,7 @@ function LoginScreen({ onPasswordLogin }) {
     catch (e) { setErr(e.message); setBusy(false); }
   }
 
-  if (!USE_OIDC) return <PasswordFallback onLogin={onPasswordLogin} />;
+  if (!USE_OIDC) return <StandaloneLogin onLogin={onPasswordLogin} />;
 
   return (
     <div className="min-h-screen bg-[#F5F3EF] flex items-center justify-center p-4">
