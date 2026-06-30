@@ -1814,48 +1814,119 @@ async function verifyTOTP(secret, code, windowSize = 2) {
   }
 }
 
-// ─── STANDALONE LOGIN WITH OTP ──────────────────────────────────────────────
+// ─── STANDALONE LOGIN & REGISTRATION WITH OTP ───────────────────────────────
 function StandaloneLogin({ onLogin }) {
+  const [mode, setMode] = useState("login"); // "login" | "register"
   const [email, setEmail] = useState("");
   const [pwd, setPwd] = useState("");
+  const [confirmPwd, setConfirmPwd] = useState("");
   const [otp, setOtp] = useState("");
-  const [step, setStep] = useState(1); // 1 = credentials, 2 = 2FA OTP
+  const [step, setStep] = useState(1); // 1 = credentials, 2 = 2FA dynamic setup (QR) / input code
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
+  const [generatedSecret, setGeneratedSecret] = useState("");
 
-  const OTP_SECRET = import.meta.env.VITE_APP_OTP_SECRET || "OW4GNH2FZ26236N7";
+  const canvasRef = useRef(null);
 
+  // Check if a user is already registered in local storage
+  const hasRegisteredUser = !!localStorage.getItem("wl_user_auth");
+
+  useEffect(() => {
+    if (!hasRegisteredUser) {
+      setMode("register");
+    }
+  }, [hasRegisteredUser]);
+
+  // Generate Base32 TOTP secret key for registration
+  function generateBase32Secret() {
+    const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+    let secret = "";
+    for (let i = 0; i < 16; i++) {
+      secret += alphabet[Math.floor(Math.random() * 32)];
+    }
+    return secret;
+  }
+
+  // Handle credentials submit for Step 1
   async function handleCredentialsSubmit(e) {
     e.preventDefault();
-    if (!email || !pwd) return;
-    setBusy(true);
     setErr("");
-    try {
-      const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(pwd));
-      const hash = Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, "0")).join("");
-      if (hash === import.meta.env.VITE_APP_PASSWORD_HASH) {
-        setStep(2);
-      } else {
-        setErr("Incorrect password.");
+    if (mode === "register") {
+      if (pwd !== confirmPwd) {
+        setErr("Passwords do not match.");
+        return;
       }
-    } catch (err) {
-      setErr("Authentication failed.");
-    } finally {
-      setBusy(false);
+      if (pwd.length < 6) {
+        setErr("Password must be at least 6 characters.");
+        return;
+      }
+      // Generate a new TOTP secret for the user
+      const secret = generateBase32Secret();
+      setGeneratedSecret(secret);
+      setStep(2);
+    } else {
+      // Login mode credentials validation
+      setBusy(true);
+      try {
+        const stored = localStorage.getItem("wl_user_auth");
+        const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(pwd));
+        const hash = Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, "0")).join("");
+        
+        let isValid = false;
+        let storedSecret = "";
+        
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (parsed.email.toLowerCase() === email.toLowerCase() && parsed.passwordHash === hash) {
+            isValid = true;
+            storedSecret = parsed.totpSecret;
+          }
+        }
+        
+        // Fallback to compiled master admin credentials
+        const masterHash = import.meta.env.VITE_APP_PASSWORD_HASH;
+        if (!isValid && hash === masterHash) {
+          isValid = true;
+          storedSecret = import.meta.env.VITE_APP_OTP_SECRET || "OW4GNH2FZ26236N7";
+        }
+
+        if (isValid) {
+          setGeneratedSecret(storedSecret);
+          setStep(2);
+        } else {
+          setErr("Incorrect email or password.");
+        }
+      } catch (err) {
+        setErr("Authentication failed.");
+      } finally {
+        setBusy(false);
+      }
     }
   }
 
+  // Handle OTP verification
   async function handleOtpSubmit(e) {
     e.preventDefault();
     if (!otp) return;
     setBusy(true);
     setErr("");
     try {
-      const isOtpValid = await verifyTOTP(OTP_SECRET, otp);
+      const isOtpValid = await verifyTOTP(generatedSecret, otp);
       if (isOtpValid) {
-        onLogin({ profile: { preferred_username: email.split("@")[0] || "admin" } });
+        if (mode === "register") {
+          // Store credentials in local storage
+          const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(pwd));
+          const hash = Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, "0")).join("");
+          const authData = {
+            email: email.trim(),
+            passwordHash: hash,
+            totpSecret: generatedSecret
+          };
+          localStorage.setItem("wl_user_auth", JSON.stringify(authData));
+        }
+        onLogin({ profile: { preferred_username: email.split("@")[0] || "doctor" } });
       } else {
-        setErr("Invalid dynamic verification code.");
+        setErr("Invalid verification code. Please check your authenticator app.");
       }
     } catch (err) {
       setErr("Verification failed.");
@@ -1864,12 +1935,26 @@ function StandaloneLogin({ onLogin }) {
     }
   }
 
+  // Draw QR code on registration step 2
+  const otpAuthUri = generatedSecret ? `otpauth://totp/WardList:${email}?secret=${generatedSecret}&issuer=AgyemanEnterprises` : "";
+  useEffect(() => {
+    if (canvasRef.current && otpAuthUri && mode === "register" && step === 2) {
+      QRCode.toCanvas(canvasRef.current, otpAuthUri, { width: 160, margin: 1 }, (err) => {
+        if (err) console.error("OTP QR drawing failed:", err);
+      });
+    }
+  }, [otpAuthUri, step, mode]);
+
   if (step === 1) {
     return (
       <div className="min-h-screen bg-[#F5F3EF] flex items-center justify-center p-4">
         <form onSubmit={handleCredentialsSubmit} className="bg-white rounded-2xl shadow-lg p-8 w-full max-w-sm">
           <p className="text-[10px] font-bold uppercase tracking-widest text-[#0D554A] mb-1">Patient Rounds</p>
-          <h1 className="text-2xl font-bold text-stone-900 mb-6">WardList</h1>
+          <h1 className="text-2xl font-bold text-stone-900 mb-2">WardList</h1>
+          <p className="text-xs text-stone-500 mb-6">
+            {mode === "register" ? "Register your standalone rounding profile" : "Sign in to your rounding account"}
+          </p>
+
           <div className="space-y-4 mb-6">
             <div>
               <label className="block text-[10px] font-semibold text-stone-500 uppercase tracking-wider mb-1">Email Address</label>
@@ -1894,22 +1979,100 @@ function StandaloneLogin({ onLogin }) {
                 className="w-full border border-stone-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0D554A] focus:border-transparent"
               />
             </div>
+            {mode === "register" && (
+              <div>
+                <label className="block text-[10px] font-semibold text-stone-500 uppercase tracking-wider mb-1">Confirm Password</label>
+                <input
+                  type="password"
+                  required
+                  value={confirmPwd}
+                  onChange={e => setConfirmPwd(e.target.value)}
+                  placeholder="••••••••"
+                  className="w-full border border-stone-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0D554A] focus:border-transparent"
+                />
+              </div>
+            )}
           </div>
+
           {err && <p className="text-xs text-red-600 mb-4 bg-red-50 border border-red-100 rounded-lg px-3 py-1.5 font-medium">{err}</p>}
-          <button type="submit" disabled={busy || !email || !pwd} className="w-full bg-[#0D554A] text-white py-2.5 rounded-lg font-semibold text-sm hover:bg-[#0A3F37] disabled:opacity-50 transition-colors">
-            Next
+          
+          <button type="submit" disabled={busy || !email || !pwd || (mode === "register" && !confirmPwd)} className="w-full bg-[#0D554A] text-white py-2.5 rounded-lg font-semibold text-sm hover:bg-[#0A3F37] disabled:opacity-50 transition-colors mb-4">
+            {mode === "register" ? "Register & Setup TOTP" : "Next"}
           </button>
+
+          {hasRegisteredUser && (
+            <div className="text-center">
+              <button
+                type="button"
+                onClick={() => { setMode(mode === "login" ? "register" : "login"); setErr(""); }}
+                className="text-xs text-[#0D554A] font-semibold hover:underline"
+              >
+                {mode === "login" ? "Need to register a new account?" : "Already have an account? Sign In"}
+              </button>
+            </div>
+          )}
         </form>
       </div>
     );
   }
 
+  // Step 2 UI (MFA configuration / check)
+  if (mode === "register") {
+    return (
+      <div className="min-h-screen bg-[#F5F3EF] flex items-center justify-center p-4">
+        <form onSubmit={handleOtpSubmit} className="bg-white rounded-2xl shadow-lg p-8 w-full max-w-sm text-center">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-[#0D554A] mb-1">Two-Factor Setup</p>
+          <h1 className="text-2xl font-bold text-stone-900 mb-2">Scan QR Code</h1>
+          <p className="text-xs text-stone-500 mb-4 font-medium">Scan this QR code with Google Authenticator or Authy to configure MFA.</p>
+          
+          <div className="flex justify-center mb-4 bg-white p-2 rounded-xl border border-stone-200 w-fit mx-auto">
+            <canvas ref={canvasRef} />
+          </div>
+
+          <div className="bg-stone-50 p-2.5 rounded-lg border border-stone-200 mb-4 text-left">
+            <p className="text-[9px] font-bold uppercase tracking-wider text-stone-400 mb-1">Manual Secret Key</p>
+            <code className="text-xs font-mono font-bold text-stone-700 select-all block break-all">{generatedSecret}</code>
+          </div>
+
+          <div className="mb-4 text-left">
+            <label className="block text-[10px] font-semibold text-stone-500 uppercase tracking-wider mb-1">Enter dynamic code to verify</label>
+            <input
+              type="text"
+              required
+              pattern="[0-9]{6}"
+              inputMode="numeric"
+              maxLength={6}
+              value={otp}
+              onChange={e => setOtp(e.target.value.replace(/\D/g, ""))}
+              placeholder="000000"
+              autoFocus
+              className="w-full text-center tracking-widest text-lg font-bold border border-stone-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#0D554A] focus:border-transparent"
+            />
+          </div>
+
+          {err && <p className="text-xs text-red-600 mb-4 bg-red-50 border border-red-100 rounded-lg px-3 py-1.5 font-medium">{err}</p>}
+
+          <div className="flex gap-3">
+            <button type="button" onClick={() => { setStep(1); setErr(""); setOtp(""); }} className="flex-1 border border-stone-300 text-stone-600 py-2.5 rounded-lg font-semibold text-sm hover:bg-stone-50 transition-colors">
+              Back
+            </button>
+            <button type="submit" disabled={busy || otp.length !== 6} className="flex-1 bg-[#0D554A] text-white py-2.5 rounded-lg font-semibold text-sm hover:bg-[#0A3F37] disabled:opacity-50 transition-colors">
+              Verify & Register
+            </button>
+          </div>
+        </form>
+      </div>
+    );
+  }
+
+  // Step 2 Login (Code verification)
   return (
     <div className="min-h-screen bg-[#F5F3EF] flex items-center justify-center p-4">
       <form onSubmit={handleOtpSubmit} className="bg-white rounded-2xl shadow-lg p-8 w-full max-w-sm">
         <p className="text-[10px] font-bold uppercase tracking-widest text-[#0D554A] mb-1">Patient Rounds</p>
         <h1 className="text-2xl font-bold text-stone-900 mb-2">Two-Factor OTP</h1>
         <p className="text-xs text-stone-500 mb-6 font-medium">Enter the 6-digit dynamic code from your authenticator app.</p>
+        
         <div className="mb-6">
           <label className="block text-[10px] font-semibold text-stone-500 uppercase tracking-wider mb-1">MFA Verification Code</label>
           <input
@@ -1925,7 +2088,9 @@ function StandaloneLogin({ onLogin }) {
             className="w-full text-center tracking-widest text-lg font-bold border border-stone-300 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#0D554A] focus:border-transparent"
           />
         </div>
+
         {err && <p className="text-xs text-red-600 mb-4 bg-red-50 border border-red-100 rounded-lg px-3 py-1.5 font-medium">{err}</p>}
+
         <div className="flex gap-3">
           <button type="button" onClick={() => { setStep(1); setErr(""); setOtp(""); }} className="flex-1 border border-stone-300 text-stone-600 py-2.5 rounded-lg font-semibold text-sm hover:bg-stone-50 transition-colors">
             Back
