@@ -57,43 +57,8 @@ function toBase64(file) {
   });
 }
 
-// ─── AUTH UTILITIES ───────────────────────────────────────────────────────────
-async function sha256hex(str) {
-  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(str));
-  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, "0")).join("");
-}
-
-function base32decode(b32) {
-  const CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
-  let bits = 0, val = 0;
-  const bytes = [];
-  for (const c of b32.toUpperCase().replace(/=+$/, "")) {
-    const idx = CHARS.indexOf(c);
-    if (idx < 0) continue;
-    val = (val << 5) | idx;
-    bits += 5;
-    if (bits >= 8) { bytes.push((val >>> (bits - 8)) & 255); bits -= 8; }
-  }
-  return new Uint8Array(bytes);
-}
-
-async function verifyTOTP(secret, code, win = 1) {
-  if (!secret || code.length !== 6) return false;
-  const key = await crypto.subtle.importKey(
-    "raw", base32decode(secret), { name: "HMAC", hash: "SHA-1" }, false, ["sign"]
-  );
-  const step = Math.floor(Date.now() / 1000 / 30);
-  for (let i = -win; i <= win; i++) {
-    const counter = step + i;
-    const buf = new ArrayBuffer(8);
-    new DataView(buf).setUint32(4, counter, false);
-    const mac = new Uint8Array(await crypto.subtle.sign("HMAC", key, buf));
-    const offset = mac[19] & 0xf;
-    const otp = (((mac[offset] & 0x7f) << 24) | (mac[offset + 1] << 16) | (mac[offset + 2] << 8) | mac[offset + 3]) % 1_000_000;
-    if (otp.toString().padStart(6, "0") === code) return true;
-  }
-  return false;
-}
+// ─── AE AUTHENTIK OIDC ────────────────────────────────────────────────────────
+import { getUser, signin, signinCallback, signout, getAccessToken } from "./auth.js";
 
 // ─── CHECKBOX STATES: 0=blank, 1=Ordered, 2=Done ─────────────────────────────
 const CHECK_STATES = ["—", "Ordered", "Done"];
@@ -853,129 +818,74 @@ function PatientCard({ patient, onChange, onDelete, onDictate, onOrdersScan, ind
   );
 }
 
-// ─── EYE ICON ─────────────────────────────────────────────────────────────────
-function EyeIcon({ open }) {
-  return open ? (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
-      <path strokeLinecap="round" strokeLinejoin="round" d="M3.98 8.223A10.477 10.477 0 0 0 1.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.451 10.451 0 0 1 12 4.5c4.756 0 8.773 3.162 10.065 7.498a10.522 10.522 0 0 1-4.293 5.774M6.228 6.228 3 3m3.228 3.228 3.65 3.65m7.894 7.894L21 21m-3.228-3.228-3.65-3.65m0 0a3 3 0 1 0-4.243-4.243m4.242 4.242L9.88 9.88" />
-    </svg>
-  ) : (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
-      <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178Z" />
-      <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
-    </svg>
+// ─── AUTHENTIK OIDC CALLBACK ───────────────────────────────────────────────────
+function CallbackHandler({ onUser }) {
+  const [err, setErr] = useState("");
+  useEffect(() => {
+    signinCallback()
+      .then(u => u ? onUser(u) : setErr("No user returned from Authentik."))
+      .catch(e => setErr("Sign-in failed: " + e.message));
+  }, []);
+  if (err) return <div className="min-h-screen bg-[#F5F3EF] flex items-center justify-center"><p className="text-red-700 bg-red-50 px-6 py-3 rounded-lg text-sm">{err}</p></div>;
+  return <div className="min-h-screen bg-[#F5F3EF] flex items-center justify-center"><p className="text-stone-500 text-sm animate-pulse">Signing in…</p></div>;
+}
+
+// ─── PASSWORD FALLBACK (temporary — until Authentik OIDC app is provisioned) ────
+function PasswordFallback({ onLogin }) {
+  const [pwd, setPwd] = useState(""); const [err, setErr] = useState(""); const [busy, setBusy] = useState(false);
+  async function submit(e) {
+    e.preventDefault(); setBusy(true); setErr("");
+    try {
+      const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(pwd));
+      const hash = Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, "0")).join("");
+      if (hash === import.meta.env.VITE_APP_PASSWORD_HASH) { onLogin({ profile: { preferred_username: "admin" } }); return; }
+      setErr("Incorrect password.");
+    } catch { setErr("Auth error."); } finally { setBusy(false); }
+  }
+  return (
+    <div className="min-h-screen bg-[#F5F3EF] flex items-center justify-center p-4">
+      <form onSubmit={submit} className="bg-white rounded-2xl shadow-lg p-8 w-full max-w-sm">
+        <p className="text-[10px] font-bold uppercase tracking-widest text-[#0D554A] mb-1">Patient Rounds</p>
+        <h1 className="text-2xl font-bold text-stone-900 mb-6">WardList</h1>
+        <input type="password" value={pwd} onChange={e => setPwd(e.target.value)} placeholder="Password" autoFocus
+          className="w-full border border-stone-300 rounded-lg px-3 py-2.5 text-sm mb-4 focus:outline-none focus:ring-2 focus:ring-[#0D554A] focus:border-transparent" />
+        {err && <p className="text-xs text-red-600 mb-4">{err}</p>}
+        <button type="submit" disabled={busy || !pwd}
+          className="w-full bg-[#0D554A] text-white py-2.5 rounded-lg font-semibold text-sm hover:bg-[#0A3F37] disabled:opacity-50 transition-colors">
+          {busy ? "Checking…" : "Sign In"}
+        </button>
+      </form>
+    </div>
   );
 }
 
-// ─── LOGIN SCREEN ─────────────────────────────────────────────────────────────
-function LoginScreen({ onLogin }) {
-  const [mode, setMode] = useState("password");
-  const [pwd, setPwd] = useState("");
-  const [showPwd, setShowPwd] = useState(false);
-  const [otp, setOtp] = useState("");
-  const [remember, setRemember] = useState(false);
-  const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
+// ─── LOGIN SCREEN (Authentik SSO — primary, password fallback) ──────────────────
+const USE_OIDC = !!import.meta.env.VITE_AUTHENTIK_CLIENT_ID;
 
-  async function submit(e) {
-    e.preventDefault();
-    setBusy(true); setError("");
-    try {
-      if (mode === "password") {
-        const hash = await sha256hex(pwd);
-        if (hash === import.meta.env.VITE_APP_PASSWORD_HASH) { onLogin(remember); return; }
-        setError("Incorrect password.");
-      } else {
-        const ok = await verifyTOTP(import.meta.env.VITE_APP_OTP_SECRET || "", otp);
-        if (ok) { onLogin(remember); return; }
-        setError("Invalid or expired code.");
-      }
-    } catch { setError("Authentication error — please retry."); }
-    finally { setBusy(false); }
+function LoginScreen({ onPasswordLogin }) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+
+  async function handleSignin() {
+    setBusy(true); setErr("");
+    try { await signin(); }
+    catch (e) { setErr(e.message); setBusy(false); }
   }
 
-  const ready = mode === "password" ? pwd.length > 0 : otp.length === 6;
+  if (!USE_OIDC) return <PasswordFallback onLogin={onPasswordLogin} />;
 
   return (
     <div className="min-h-screen bg-[#F5F3EF] flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-lg p-8 w-full max-w-sm">
+      <div className="bg-white rounded-2xl shadow-lg p-8 w-full max-w-sm text-center">
         <p className="text-[10px] font-bold uppercase tracking-widest text-[#0D554A] mb-1">Patient Rounds</p>
-        <h1 className="text-2xl font-bold text-stone-900 mb-6">WardList</h1>
-
-        <div className="flex rounded-lg border border-stone-200 mb-5 overflow-hidden text-xs font-semibold">
-          <button type="button" onClick={() => { setMode("password"); setError(""); }}
-            data-testid="mode-password"
-            className={`flex-1 py-2 transition-colors ${mode === "password" ? "bg-[#0D554A] text-white" : "text-stone-500 hover:bg-stone-50"}`}>
-            Password
-          </button>
-          <button type="button" onClick={() => { setMode("otp"); setError(""); }}
-            data-testid="mode-otp"
-            className={`flex-1 py-2 transition-colors ${mode === "otp" ? "bg-[#0D554A] text-white" : "text-stone-500 hover:bg-stone-50"}`}>
-            OTP Code
-          </button>
-        </div>
-
-        <form onSubmit={submit}>
-          {mode === "password" ? (
-            <div className="mb-4">
-              <label className="block text-xs font-semibold text-stone-600 mb-1">Password</label>
-              <div className="relative">
-                <input
-                  type={showPwd ? "text" : "password"}
-                  value={pwd}
-                  onChange={e => setPwd(e.target.value)}
-                  placeholder="Enter password"
-                  autoFocus
-                  data-testid="login-password"
-                  className="w-full border border-stone-300 rounded-lg px-3 py-2.5 text-sm pr-10 focus:outline-none focus:ring-2 focus:ring-[#0D554A] focus:border-transparent"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPwd(v => !v)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-600"
-                  tabIndex={-1}
-                  aria-label={showPwd ? "Hide password" : "Show password"}
-                  data-testid="toggle-password-visibility"
-                >
-                  <EyeIcon open={showPwd} />
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div className="mb-4">
-              <label className="block text-xs font-semibold text-stone-600 mb-1">6-digit OTP Code</label>
-              <input
-                type="text"
-                inputMode="numeric"
-                maxLength={6}
-                value={otp}
-                onChange={e => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                placeholder="000000"
-                autoFocus
-                data-testid="login-otp"
-                className="w-full border border-stone-300 rounded-lg px-3 py-2.5 text-center tracking-widest text-lg font-mono focus:outline-none focus:ring-2 focus:ring-[#0D554A] focus:border-transparent"
-              />
-              <p className="text-[10px] text-stone-400 mt-1">Open your authenticator app for the code</p>
-            </div>
-          )}
-
-          <label className="flex items-center gap-2 mb-5 cursor-pointer select-none">
-            <input type="checkbox" checked={remember} onChange={e => setRemember(e.target.checked)}
-              data-testid="remember-me" className="rounded" />
-            <span className="text-xs text-stone-600">Keep me logged in</span>
-          </label>
-
-          {error && <p className="text-xs text-red-600 mb-4" data-testid="login-error">{error}</p>}
-
-          <button
-            type="submit"
-            disabled={busy || !ready}
-            data-testid="login-submit"
-            className="w-full bg-[#0D554A] text-white py-2.5 rounded-lg font-semibold text-sm hover:bg-[#0A3F37] disabled:opacity-50 transition-colors"
-          >
-            {busy ? "Checking…" : "Sign In"}
-          </button>
-        </form>
+        <h1 className="text-2xl font-bold text-stone-900 mb-2">WardList</h1>
+        <p className="text-xs text-stone-500 mb-8">AE Identity</p>
+        {err && <p className="text-xs text-red-600 mb-4 bg-red-50 px-3 py-2 rounded-lg">{err}</p>}
+        <button onClick={handleSignin} disabled={busy}
+          className="w-full bg-[#0D554A] text-white py-3 rounded-lg font-semibold text-sm hover:bg-[#0A3F37] disabled:opacity-50 transition-colors">
+          {busy ? "Redirecting…" : "Sign in with Authentik"}
+        </button>
+        <p className="text-[10px] text-stone-400 mt-6">Your Agyeman Enterprises account gives you access.</p>
       </div>
     </div>
   );
@@ -996,23 +906,26 @@ export default function WardList() {
   const [dictatingIdx, setDictatingIdx] = useState(null);
   const [ordersScanIdx, setOrdersScanIdx] = useState(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
-  const [authed, setAuthed] = useState(
-    () => !!(localStorage.getItem("wl_auth") || sessionStorage.getItem("wl_auth"))
-  );
+  const [user, setUser] = useState(null);
+  const [authBusy, setAuthBusy] = useState(true);
 
-  function handleLogin(remember) {
-    if (remember) localStorage.setItem("wl_auth", "1");
-    else sessionStorage.setItem("wl_auth", "1");
-    setAuthed(true);
-  }
+  // ── OIDC bootstrap: check existing session or handle callback ──
+  useEffect(() => {
+    if (window.location.search.includes("code=") || window.location.search.includes("error=")) {
+      // This is an Authentik callback — handled by <CallbackHandler>
+      setAuthBusy(false);
+    } else {
+      getUser().then(u => {
+        setUser(u ?? null);
+        setAuthBusy(false);
+      });
+    }
+  }, []);
 
-  function handleLogout() {
-    localStorage.removeItem("wl_auth");
-    sessionStorage.removeItem("wl_auth");
-    setAuthed(false);
-  }
+  function handleLogin(u) { setUser(u); }
+  async function handleLogout() { try { await signout(); } catch { setUser(null); } }
 
-  useEffect(() => { loadSaved(); }, []);
+  useEffect(() => { if (user) loadSaved(); }, [user]);
 
   async function loadSaved() {
     setLoading(true); setLoadError("");
@@ -1063,7 +976,18 @@ export default function WardList() {
 
   function loadIntoForm(row) { setPatients([row]); setTab("rounds"); }
 
-  if (!authed) return <LoginScreen onLogin={handleLogin} />;
+  // ── Auth routing ──
+  const isCallback = window.location.search.includes("code=") || window.location.search.includes("error=");
+
+  if (authBusy) {
+    return <div className="min-h-screen bg-[#F5F3EF] flex items-center justify-center"><p className="text-stone-400 text-sm animate-pulse">Loading…</p></div>;
+  }
+
+  if (isCallback && !user) {
+    return <CallbackHandler onUser={handleLogin} />;
+  }
+
+  if (!user) return <LoginScreen onPasswordLogin={handleLogin} />;
 
   return (
     <>
