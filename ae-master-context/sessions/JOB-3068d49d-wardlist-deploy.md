@@ -9,7 +9,7 @@
 
 ## Turn 1 — 08:35Z — Pre-work & Setup
 - Workspace was empty (bare .git, no files)
-- Found repo: warndlist matching "Agyeman-Enterprises/wardlist" with description "GMH Hospitalist Daily Rounds List — Dual Deploy (Vercel + Coolify)"
+- Found repo: Agyeman-Enterprises/wardlist with description "GMH Hospitalist Daily Rounds List — Dual Deploy (Vercel + Coolify)"
 - Cloned Agyeman-Enterprises/wardlist
 - Read existing BRIEF.md from 8 prior agents (JOB-b6604a3c through JOB-657cb386)
 - Read 5 session journals: JOB-518522ad, JOB-7317c892, JOB-ff9c757e, JOB-b5ef5258, JOB-657cb386
@@ -41,19 +41,28 @@
 - Updated BRIEF.md with complete findings and auth instructions
 - Committed and pushed: 8c33adf
 
+## Turn 5 — 08:42Z — Fresh auth + persistent monitor
+- Generated fresh auth code: HLMD-SGCF (older DDKC-SNWL was expiring)
+- Started Vercel CLI in background (PID 721) polling for auth every 5s
+- Set up persistent monitor (task bbsz77c9r) watching config.json for token field
+- Updated BRIEF.md with fresh URL and monitor state
+- Updated session journal, committed, pushed
+
 ## Key Findings
-1. Both deployments LIVE — NOT a service outage. Users are served.
-2. Root cause: Vercel project deployed via CLI without Git integration → "unknown deployment"
-3. Repo now in Agyeman-Enterprises where Vercel GitHub App IS installed (all repos access)
-4. Push to main: Vercel App does NOT auto-deploy without project import
-5. GitHub Actions runs on push but fails on secrets
-6. 9 agents total hit the same blocker: Vercel device auth needs browser
-7. No VERCEL_TOKEN anywhere
-8. Build passes — code is ready to deploy
-9. Fix takes ~2 minutes after auth
+1. **Both deployments LIVE** — NOT a service outage. Users are served.
+2. **Root cause:** Vercel project deployed via CLI without Git integration → "unknown deployment"
+3. **Repo now in Agyeman-Enterprises** where Vercel GitHub App IS installed (all repos access)
+4. **Push to main tested:** Vercel App does NOT auto-deploy without project import
+5. **GitHub Actions runs** on push but fails on secrets
+6. **9 agents total** hit the same blocker: Vercel device auth needs browser
+7. **No VERCEL_TOKEN** anywhere
+8. **Build passes** — code is ready to deploy
+9. **Fix takes ~2 minutes** after auth
+10. **Monitor running** — auto-executes fix when auth detected
 
 ## What Remains
-- [ ] Vercel auth: visit https://vercel.com/oauth/device?user_code=DDKC-SNWL (or generate fresh)
-- [ ] Run auto-fix.sh with VERCEL_TOKEN
+- [ ] Vercel auth: visit https://vercel.com/oauth/device?user_code=HLMD-SGCF (or generate fresh)
+- [ ] Monitor auto-catches auth and runs auto-fix.sh
+- [ ] If monitor/CLI dies: run `bash auto-fix.sh <token>` manually
 - [ ] Verify auto-deploy via GitHub Actions
 - [ ] Verify dual deploy (both Vercel + Coolify)

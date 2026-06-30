@@ -21,10 +21,11 @@
    - Workflow "Deploy to Vercel" triggered on push to main
    - Fails with exit code 1 — needs VERCEL_TOKEN, VERCEL_ORG_ID, VERCEL_PROJECT_ID
 🔶 PHASE F — Vercel device auth flow READY (fresh code generated)
-   - URL: https://vercel.com/oauth/device?user_code=DDKC-SNWL
-   - Code generated: 2026-06-30T08:39Z (from `npx vercel env ls`)
+   - URL: https://vercel.com/oauth/device?user_code=HLMD-SGCF
+   - Code generated: 2026-06-30T08:42Z (from `npx vercel whoami`)
    - Expires: ~10 min from generation
-   - Alternative: https://vercel.com/oauth/device?user_code=DDKC-SNWL
+   - Monitor running: auto-detects auth and runs fix.sh
+   - Fix script: auto-fix.sh (ready to execute)
 ❌ PHASE G — GitHub Actions deploy pipeline blocked (missing secrets: VERCEL_TOKEN, VERCEL_ORG_ID, VERCEL_PROJECT_ID)
 
 ---
@@ -93,10 +94,12 @@ All 9 prior agents (JOB-b6604a3c through JOB-657cb386) hit the same wall:
 - ✅ Fresh Vercel device auth code generated: DDKC-SNWL
 - ✅ Source code read: App.tsx (850+ lines), api.ts, types.ts, main.tsx
 
-### Auth Monitor Setup (if running)
-- Device auth flow started at 08:39Z with code DDKC-SNWL
-- Monitor polls Vercel OAuth token endpoint every 5s
-- When auth completes, the monitor captures the token and can auto-execute the fix
+### Auth Monitor Setup (running)
+- Fresh device auth flow started at 08:42Z with user_code=HLMD-SGCF
+- Vercel CLI (PID 721) polls every 5s in background
+- Monitor watches config.json for token field, every 5s
+- When auth completes, monitor auto-executes auto-fix.sh with captured token
+- If CLI process dies without auth, monitor exits with error
 
 ### Fix Script (Post-Auth — ~2 minutes)
 
@@ -168,7 +171,7 @@ PWA v0.19.8 - generateSW - precache 7 entries (158.84 KiB)
 All 8 prior agents hit this same wall. The Vercel CLI uses OAuth device flow, which requires a browser.
 
 ### What to do:
-1. **Visit this URL in any browser:** https://vercel.com/oauth/device?user_code=DDKC-SNWL
+1. **Visit this URL in any browser:** https://vercel.com/oauth/device?user_code=HLMD-SGCF
 2. **Log in to Vercel** (Akua's account — the one that owns the wardlist project)
 3. **Authorize the CLI** — click "Authorize"
 4. **That's it** — the agent detects auth and auto-completes the fix
@@ -202,8 +205,8 @@ If you prefer not to use device auth:
 **BLOCKER:** Vercel CLI requires browser authorization — no workaround in headless environment.
 This is the same blocker that stopped 9 prior agents (JOB-b6604a3c through JOB-657cb386).
 
-**Device URL:** https://vercel.com/oauth/device?user_code=DDKC-SNWL
-**Expires:** ~10 minutes from generation (code: DDKC-SNWL generated 2026-06-30T08:39Z)
+**Device URL:** https://vercel.com/oauth/device?user_code=HLMD-SGCF
+**Expires:** ~10 minutes from generation (code: HLMD-SGCF generated 2026-06-30T08:42Z)
 **If expired:** Run `npx vercel login` to get a fresh code.
 
 **Alternative:** If a VERCEL_TOKEN is available from Vercel dashboard → Account → Settings → Tokens, set it as `export VERCEL_TOKEN=<value>` and the agent completes everything immediately.
