@@ -2,7 +2,7 @@
 
 **Tracking ID:** JOB-3068d49d
 **Agent:** AE Agent (Floor 0)
-**Status:** AUTH WAITING — Fresh Vercel device login URL ready
+**Status:** AUTH WAITING — Fresh Vercel device login URL ready (monitor running, auto-fix.sh ready)
 
 ---
 
@@ -268,3 +268,25 @@ npx vercel deploy --prod --token $VERCEL_TOKEN
 | Vercel OAuth via curl | ❌ | CLI has embedded client credentials |
 | Vercel device auth flow | ✅ THE ONLY PATH | Requires browser visit — tested and working |
 | Manual VERCEL_TOKEN from dashboard | ✅ | Would work instantly if available |
+
+---
+
+## 9. HANDOFF
+
+**HANDOFF:** Investigation complete. All paths exhausted except Vercel browser auth.
+
+**Current state:**
+- Both deployments LIVE (Vercel: 200, Coolify: 200) — users are served
+- Build passes cleanly (750ms)
+- Auto-fix script ready: `auto-fix.sh`
+- Monitor running: watches for Vercel auth token in config.json
+- All findings committed to main (e4e95bb)
+
+**What's needed to finish (2 minutes after auth):**
+1. Visit https://vercel.com/oauth/device?user_code=HLMD-SGCF in a browser
+2. Log in with Akua's Vercel account and authorize the CLI
+3. Monitor auto-detects auth and runs auto-fix.sh automatically
+4. Or manually: `export VERCEL_TOKEN=<from auth> && bash auto-fix.sh`
+
+**If auth URL expires:** Run `npx vercel login` to get a fresh code.
+**Alternative (no browser):** Create VERCEL_TOKEN at https://vercel.com/account/tokens then run `bash auto-fix.sh <token>`
