@@ -9,9 +9,9 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.ico', 'apple-touch-icon.png'],
       manifest: {
-        name: 'WardList — GMH Hospitalist',
+        name: 'WardList',
         short_name: 'WardList',
-        description: 'GMH Hospitalist Daily Rounds List',
+        description: 'Patient Rounds & Census Tracker',
         theme_color: '#0D554A',
         background_color: '#F5F3EF',
         display: 'standalone',

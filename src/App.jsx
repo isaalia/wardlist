@@ -191,7 +191,7 @@ async function callAIVision(userContent, maxTokens = 4000) {
 }
 
 // ─── DICTATION MODAL ──────────────────────────────────────────────────────────
-const DICTATION_SYSTEM = `You are a clinical scribe for a hospitalist physician.
+const DICTATION_SYSTEM = `You are a clinical scribe for a hospital medicine provider.
 The doctor will free-talk about a patient. Extract and map every piece of information to the correct field.
 Convert natural language to standard clinical shorthand used in US hospitals.
 
@@ -899,7 +899,7 @@ function LoginScreen({ onLogin }) {
   return (
     <div className="min-h-screen bg-[#F5F3EF] flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-lg p-8 w-full max-w-sm">
-        <p className="text-[10px] font-bold uppercase tracking-widest text-[#0D554A] mb-1">GMH Hospitalist</p>
+        <p className="text-[10px] font-bold uppercase tracking-widest text-[#0D554A] mb-1">Patient Rounds</p>
         <h1 className="text-2xl font-bold text-stone-900 mb-6">WardList</h1>
 
         <div className="flex rounded-lg border border-stone-200 mb-5 overflow-hidden text-xs font-semibold">
@@ -1104,7 +1104,7 @@ export default function WardList() {
         <header className="no-print sticky top-0 z-10 bg-[#FEFDFB] border-b border-[#E7E3DC]">
           <div className="max-w-3xl mx-auto px-4 py-2 flex items-center justify-between">
             <div>
-              <p className="text-[10px] font-bold uppercase tracking-widest text-[#0D554A]">GMH Hospitalist</p>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-[#0D554A]">Patient Rounds</p>
               <h1 className="text-lg font-bold text-stone-800 leading-tight">WardList</h1>
             </div>
             <div className="flex items-center gap-2">
