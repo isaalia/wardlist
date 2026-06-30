@@ -1,3 +1,14 @@
+@import "tailwindcss";
+
+@theme {
+  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+  --color-deep-teal-900: #0D554A;
+  --color-deep-teal-800: #0A3F37;
+  --color-page: #F5F3EF;
+  --color-card: #FEFDFB;
+  --color-surface: #FAF8F5;
+}
+
 /* ── WardList Design Tokens ───────────────────────────────────────────── */
 :root {
   /* Page & surfaces */
