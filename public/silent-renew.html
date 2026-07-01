@@ -1,1 +1,20 @@
-<!DOCTYPE html><html><body><script src="/assets/oidc-silent-renew.js"></script></body></html>
+<!DOCTYPE html>
+<html>
+<head><title>Silent renew</title></head>
+<body>
+<script>
+  // oidc-client-ts silent renew callback
+  // Loaded in a hidden iframe by the UserManager when a token is about to expire.
+  // Calls signinSilentCallback via the parent window's UserManager instance.
+  window.addEventListener("load", function () {
+    if (window.opener) {
+      // Popup flow
+      window.location.href = window.location.href;
+    }
+    // For iframe flow, the oidc-client-ts library handles this via postMessage.
+    // No extra JS needed — the library's iframe listener in the parent window
+    // picks up the URL change automatically.
+  });
+</script>
+</body>
+</html>
