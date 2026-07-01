@@ -1,0 +1,56 @@
+name: Provision Authentik OIDC App (wardlist)
+on:
+  workflow_dispatch:
+    inputs:
+      auth_base:
+        description: 'Authentik base URL'
+        required: false
+        default: 'https://auth.agyemanenterprises.com'
+      dry_run:
+        description: 'Dry run (true/false)'
+        required: false
+        default: 'false'
+
+jobs:
+  provision:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Provision Authentik OIDC application
+        env:
+          AUTHENTIK_API_TOKEN: ${{ secrets.AUTHENTIK_API_TOKEN }}
+          AUTH_BASE: ${{ github.event.inputs.auth_base }}
+          DRY_RUN: ${{ github.event.inputs.dry_run }}
+        run: bash .github/scripts/provision-authentik-oidc.sh
+
+      - name: Set VITE_AUTHENTIK_CLIENT_ID in Vercel
+        if: ${{ github.event.inputs.dry_run != 'true' }}
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+        run: |
+          echo "Setting VITE_AUTHENTIK_CLIENT_ID=wardlist in Vercel..."
+          curl -s -X POST "https://api.vercel.com/v9/projects/${VERCEL_PROJECT_ID}/env?teamId=${VERCEL_ORG_ID}" \
+            -H "Authorization: Bearer ${VERCEL_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d '{"key":"VITE_AUTHENTIK_CLIENT_ID","value":"wardlist","type":"plain","target":["production","preview","development"]}' \
+            | jq '{key: .key, created: .createdAt}' || true
+          echo "Vercel env var set. Trigger a redeploy for it to take effect."
+
+      - name: Redeploy to Vercel
+        if: ${{ github.event.inputs.dry_run != 'true' }}
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+        run: |
+          echo "Triggering Vercel redeploy..."
+          LATEST=$(curl -s "https://api.vercel.com/v9/projects/${VERCEL_PROJECT_ID}/deployments?teamId=${VERCEL_ORG_ID}&limit=1" \
+            -H "Authorization: Bearer ${VERCEL_TOKEN}" | jq -r '.deployments[0].uid')
+          curl -s -X POST "https://api.vercel.com/v9/deployments?teamId=${VERCEL_ORG_ID}" \
+            -H "Authorization: Bearer ${VERCEL_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d "{\"name\":\"wardlist\",\"gitSource\":{\"type\":\"github\",\"repoId\":\"1284404431\",\"ref\":\"main\"}}" \
+            | jq '{url: .url, state: .readyState}' || true
