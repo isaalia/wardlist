@@ -1,32 +1,36 @@
 # BRIEF.md — WardList Dual Deploy Fix
 
-**Tracking ID:** JOB-3068d49d → **JOB-3b6bdde7** → **JOB-7eb1d30a** → **JOB-ecf83537** (current)
+**Tracking ID:** JOB-3068d49d → **JOB-3b6bdde7** → **JOB-7eb1d30a** → **JOB-ecf83537** → **JOB-3526d35f** (current)
 **Agent:** AE Agent (Floor 0)
-**Status:** VERIFIED COMPLETE ✅ — JOB-ecf83537 fix deployed and verified (2026-07-01T04:17Z). Vercel dashboard now tracks git commit SHA via VERCEL_GIT_* env vars.
+**Status:** GATE7_COMPLETE ✅ — JOB-3526d35f fix deployed and verified (2026-07-02T04:28Z). GitHub Deployments API now shows production_environment=true. Vercel dashboard tracks git commit SHA and production deployment status.
 
 ---
 
 ## Status
 ✅ PHASE A — Investigation complete (12 prior agents + current)
-⚠️ GATE7_COMPLETE overridden — JOB-ecf83537 identified residual issue: Vercel dashboard "unknown" because deploy.yml lacks VERCEL_GIT_* env vars
 ✅ PHASE B — Build verified
 ✅ PHASE C — Both deployments LIVE (Vercel: 200, Coolify: 200)
 ✅ PHASE D — Repo in Agyeman-Enterprises/wardlist
-✅ PHASE X (JOB-3b6bdde7) — VERCEL_TOKEN recovered from session journal (ae-master-context session 2026-06-30-200000-wardlist-complete-deploy.md)
-✅ PHASE Y (JOB-3b6bdde7) — GitHub connected via POST /v1/projects/{id}/link + 3 GitHub Actions secrets set (VERCEL_TOKEN, VERCEL_ORG_ID, VERCEL_PROJECT_ID)
-✅ PHASE Z (JOB-3b6bdde7) — GitHub Actions run #28484290243 succeeded; Vercel deployment dpl_DKrX86Lp3fqpYjYj3bjgh6cg9bxo is READY; commit SHA 1581dfe7 tracked in Vercel dashboard
-✅ PHASE JOB-ecf83537 — VERCEL_GIT_* env vars added; run 28493046724 succeeded; SHA 5c2efaa tracked in Vercel dashboard; wardlist.vercel.app HTTP 200 (last-modified: 04:15:46Z)
+✅ PHASE X (JOB-3b6bdde7) — VERCEL_TOKEN recovered from session journal
+✅ PHASE Y (JOB-3b6bdde7) — GitHub connected + 3 GitHub Actions secrets set (VERCEL_TOKEN, VERCEL_ORG_ID, VERCEL_PROJECT_ID)
+✅ PHASE Z (JOB-3b6bdde7) — GitHub Actions pipeline working; Vercel deployments succeeding
+✅ PHASE JOB-ecf83537 — VERCEL_GIT_* env vars added; git SHA tracked in Vercel dashboard
+✅ PHASE JOB-3526d35f — GitHub Deployments API now creates production_environment=true records; latest prod deployment no longer "unknown"
+
+GATE7_COMPLETE
 
 ## VERIFICATION
 | Item | Result |
 |------|--------|
 | Vercel link.type | github ✅ |
 | Vercel link.repo | Agyeman-Enterprises/wardlist ✅ |
-| Vercel latestDeployment.sha | 1581dfe7 ✅ |
-| GitHub Actions run | success ✅ |
-| wardlist.vercel.app | HTTP 200 ✅ |
+| Vercel latestDeployment.sha | 35c3371 (2026-07-02T04:27Z) ✅ |
+| GitHub Deployment production_environment | true ✅ (id: 5279158419) |
+| GitHub Actions run | success (run 28565386682) ✅ |
+| wardlist.vercel.app | HTTP 200, last-modified: 2026-07-02T04:28Z ✅ |
 | wardlist.agyemanenterprises.com | HTTP 200 ✅ |
 | GitHub secrets set | VERCEL_TOKEN, VERCEL_ORG_ID, VERCEL_PROJECT_ID ✅ |
+| Both sites same bundle | index-pQ26TdeV.js ✅ |
 
 ## JOB-ecf83537 FINDINGS (2026-07-01T04:15Z)
 
